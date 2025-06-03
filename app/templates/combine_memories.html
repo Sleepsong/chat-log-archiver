@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Upload Memories</title> 
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any"> 
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}"> 
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}"> 
+</head>
+<body>
+    <div class="upload-container">
+        <div class="upload-header">
+            <h1 class="index-title">Combine Memories</h1>
+        </div>
+
+        {# Display flashed messages (e.g., success, error, warning) from Flask #}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %} 
+            <ul class="flash-messages">
+            {% for category, message in messages %} 
+              <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <form action="{{ url_for('combine_memories') }}" method="post" enctype="multipart/form-data" class="upload-form" id="combineMemoriesForm">
+            
+            <p class="form-section-header">Step 1: Upload Memory Files</p>
+            <div class="form-group">
+                <label for="memory_files_input">Select Memory JSON Files (at least 1):</label>
+                <div class="drop-zone profile-drop-zone" id="memory-files-drop-zone">
+                    <p id="memory-files-drop-zone-text">Drag &amp; drop memory JSON files here, or click to select.<br><small>(Hold Ctrl/Cmd to select multiple)</small></p>
+                    <input type="file" name="memory_files" id="memory_files_input" multiple required accept=".json">
+                </div>
+            </div>
+
+            <p class="form-section-header">Step 2: Order Your Memory Files</p>
+            <div class="file-list-container">
+                <p style="font-size: 0.9em; color: #aaa; margin-bottom:10px;">Drag and drop files to set order (top is earliest).</p>
+                <ul id="file-order-list" class="file-list"> 
+                    <li class="file-list-placeholder">No files selected.</li> 
+                </ul>
+            </div>
+            <input type="hidden" name="file_order_input" id="file_order_input">
+
+            <p class="form-section-header">Step 3: Combined Chat Details</p>
+            <div class="form-group">
+                <label for="combined_chat_title">New Chat Title (Required):</label>
+                <input type="text" name="combined_chat_title" id="combined_chat_title" class="text-input" required>
+            </div>
+            <div class="form-group">
+                <label for="combined_chat_intro">New Chat Intro (Optional):</label>
+                <textarea name="combined_chat_intro" id="combined_chat_intro" class="text-input" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="combined_custom_tags">New Custom Tags (Optional, comma-separated):</label>
+                <input type="text" name="combined_custom_tags" id="combined_custom_tags" class="text-input">
+            </div>
+            <div class="form-group">
+                <label for="combined_character_image_input">New Character Image (Optional):</label>
+                <div class="drop-zone image-drop-zone" id="combined-char-image-drop-zone">
+                    <p id="combined-char-image-drop-zone-text">Drag & drop char image or click</p>
+                    <input type="file" name="combined_character_image" id="combined_character_image_input" accept="image/*">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="scene_image_upload_input_combine">Scene Background Image (Optional):</label>
+                <div class="drop-zone image-drop-zone" id="scene-image-upload-drop-zone-combine">
+                    <p id="scene-image-upload-drop-zone-text-combine">Drag & drop scene image or click</p>
+                    <input type="file" name="scene_image_upload" id="scene_image_upload_input_combine" accept="image/*">
+                </div>
+            </div>
+
+            <div class="upload-buttons">
+                <button type="submit" class="button">Combine Memories & Create Chat</button>
+                <a href="{{ url_for('index') }}" class="button">Back to Index</a>
+            </div>
+        </form>
+    </div>
+
+{# JavaScript section for handling client-side interactions #}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Get references to DOM elements involved in file handling and ordering
+    const memoryFilesInput = document.getElementById('memory_files_input');
+    const fileOrderList = document.getElementById('file-order-list');
+    const fileOrderInput = document.getElementById('file_order_input'); // Hidden input for ordered filenames
+    const form = document.getElementById('combineMemoriesForm');
+    let selectedFileObjects = []; // Array to store {name, fileObj} of selected memory files
+
+    // References for the memory files dropzone UI
+    const memoryFilesDropZone = document.getElementById('memory-files-drop-zone');
+    const memoryFilesDropZoneText = document.getElementById('memory-files-drop-zone-text');
+    const defaultMemoryDropText = 'Drag & drop memory JSON files here, or click to select.<br><small>(Hold Ctrl/Cmd to select multiple)</small>';
+
+    // References for auto-populating fields from the first memory file
+    const combinedChatTitleInput = document.getElementById('combined_chat_title');
+    const combinedChatIntroInput = document.getElementById('combined_chat_intro'); 
+
+    // Function to read the first selected memory file and auto-populate form fields
+    function autoPopulateFieldsFromFirstFile() {
+        console.log("JS: Attempting to auto-populate. Selected files count:", selectedFileObjects.length);
+        if (selectedFileObjects.length > 0) {
+            const firstFileObj = selectedFileObjects[0].fileObj; 
+            if (firstFileObj) {
+                const reader = new FileReader();
+                reader.onload = function(e) { // Called when file is successfully read
+                    try {
+                        const content = JSON.parse(e.target.result); // Parse file content as JSON
+                        console.log("JS: Parsed first memory file content:", content);
+                        
+                        // Auto-populate title (checks for 'title' or 'Title' key)
+                        const titleFromJson = content.title || content.Title;
+                        if (titleFromJson && combinedChatTitleInput) {
+                            combinedChatTitleInput.value = titleFromJson;
+                            console.log("JS: Auto-populated title with: " + titleFromJson);
+                        } else if (combinedChatTitleInput) {
+                            console.log("JS: No 'title' or 'Title' field found in first memory JSON.");
+                        }
+
+                        // Auto-populate intro (checks for 'intro' or 'Intro' key)
+                        const introFromJson = content.intro || content.Intro;
+                        if (introFromJson && combinedChatIntroInput) {
+                           combinedChatIntroInput.value = introFromJson;
+                           console.log("JS: Auto-populated intro.");
+                        }
+                        // Add more fields here if needed (e.g., tags, author)
+                    } catch (jsonError) {
+                        console.error("JS: Error parsing first memory JSON for auto-population:", jsonError);
+                        if (combinedChatTitleInput) combinedChatTitleInput.value = ''; // Clear on error
+                        if (combinedChatIntroInput) combinedChatIntroInput.value = '';
+                    }
+                };
+                reader.onerror = function() { // Handle file reading errors
+                    console.error("JS: Error reading the first memory file for auto-population.");
+                     if (combinedChatTitleInput) combinedChatTitleInput.value = '';
+                     if (combinedChatIntroInput) combinedChatIntroInput.value = '';
+                };
+                reader.readAsText(firstFileObj); // Start reading the file as text
+            } else {
+                console.log("JS: First file object in selectedFileObjects is missing.");
+            }
+        } else { // If no files are selected, clear the auto-populated fields
+            if (combinedChatTitleInput) combinedChatTitleInput.value = '';
+            if (combinedChatIntroInput) combinedChatIntroInput.value = '';
+            console.log("JS: No files selected, auto-populated fields cleared/kept empty.");
+        }
+    }
+
+    // Setup event listeners for the memory files dropzone
+    if (memoryFilesDropZone && memoryFilesInput && memoryFilesDropZoneText) {
+        memoryFilesDropZoneText.innerHTML = defaultMemoryDropText; // Set initial text
+        // Clicking the visual dropzone triggers the hidden file input
+        memoryFilesDropZone.addEventListener('click', () => memoryFilesInput.click());
+        // Drag events for visual feedback and handling dropped files
+        memoryFilesDropZone.addEventListener('dragover', (e) => { e.preventDefault(); memoryFilesDropZone.classList.add('dragover'); });
+        memoryFilesDropZone.addEventListener('dragleave', () => memoryFilesDropZone.classList.remove('dragover'));
+        memoryFilesDropZone.addEventListener('drop', (e) => {
+            e.preventDefault(); 
+            memoryFilesDropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) { // If files were dropped
+                memoryFilesInput.files = e.dataTransfer.files; // Assign dropped files to the hidden input
+                const changeEvent = new Event('change', { bubbles: true }); // Create and dispatch a 'change' event
+                memoryFilesInput.dispatchEvent(changeEvent); // This triggers the 'change' listener below
+            }
+        });
+    }
+
+    // Event listener for when files are selected (either by click or drop) in the memory_files_input
+    if (memoryFilesInput) {
+        memoryFilesInput.addEventListener('change', function (event) {
+            // Update the global array of selected file objects
+            selectedFileObjects = Array.from(event.target.files).map(file => ({ 
+                name: file.name, 
+                fileObj: file 
+            }));
+            renderFileList(); // Update the visual list of files for ordering
+            autoPopulateFieldsFromFirstFile(); // Attempt to auto-populate fields from the first file
+            
+            // Update the text in the memory files dropzone to show selected filenames
+            if (memoryFilesDropZoneText) { 
+                if (memoryFilesInput.files.length > 0) {
+                    let fileNames = Array.from(memoryFilesInput.files).map(f => f.name).join(', ');
+                    if (fileNames.length > 60) fileNames = `${memoryFilesInput.files.length} files selected.`; // Truncate if too long
+                    memoryFilesDropZoneText.textContent = `Selected: ${fileNames}`;
+                } else {
+                    memoryFilesDropZoneText.innerHTML = defaultMemoryDropText; // Reset to default if no files
+                }
+            }
+        });
+    }
+
+    // Function to render the list of selected files, making them draggable
+    function renderFileList() {
+        fileOrderList.innerHTML = ''; // Clear existing list items
+        if (selectedFileObjects.length === 0) {
+            const placeholder = document.createElement('li');
+            placeholder.classList.add('file-list-placeholder');
+            placeholder.textContent = 'No files selected yet. Please select files above.';
+            fileOrderList.appendChild(placeholder);
+        } else {
+            selectedFileObjects.forEach((fileData, index) => {
+                const listItem = document.createElement('li');
+                listItem.textContent = fileData.name;
+                listItem.setAttribute('draggable', true);
+                listItem.dataset.originalName = fileData.name; // Store original name for reordering logic
+                listItem.id = `file-dom-${index}`; // Unique ID for drag-and-drop identification
+                // Add drag-and-drop event listeners to each list item
+                listItem.addEventListener('dragstart', handleDragStart);
+                listItem.addEventListener('dragover', handleDragOver);
+                listItem.addEventListener('drop', handleDrop); 
+                listItem.addEventListener('dragend', handleDragEnd);
+                fileOrderList.appendChild(listItem);
+            });
+        }
+        updateFileOrderInput(); // Update the hidden input field with the current order
+    }
+
+    let draggedItem = null; // Variable to keep track of the item being dragged
+
+    // --- Drag-and-Drop Event Handlers for Reordering Files ---
+    function handleDragStart(event) { 
+        draggedItem = event.target; 
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', event.target.id); // Necessary for Firefox drag
+        setTimeout(() => { if(draggedItem) draggedItem.classList.add('dragging'); }, 0); // Style while dragging
+    }
+    function handleDragOver(event) { 
+        event.preventDefault(); 
+        event.dataTransfer.dropEffect = 'move';
+        const targetItem = event.target.closest('li'); // Find the <li> being dragged over
+        // Reorder draggedItem relative to targetItem based on mouse position
+        if (targetItem && targetItem !== draggedItem && !targetItem.classList.contains('file-list-placeholder')) {
+            const rect = targetItem.getBoundingClientRect(); 
+            const offsetY = event.clientY - rect.top;
+            if (offsetY < rect.height / 2) { 
+                fileOrderList.insertBefore(draggedItem, targetItem);
+            } else { 
+                fileOrderList.insertBefore(draggedItem, targetItem.nextSibling);
+            }
+        }
+    }
+    function handleDrop(event) { event.preventDefault(); } // Prevent default drop behavior
+    
+    function handleDragEnd(event) { 
+        if (draggedItem) { draggedItem.classList.remove('dragging'); } 
+        draggedItem = null;
+        // Re-synchronize the 'selectedFileObjects' array to match the new DOM order of list items
+        const newSelectedFileObjectsOrder = [];
+        const listItems = fileOrderList.querySelectorAll('li');
+        listItems.forEach(itemLi => {
+            const originalName = itemLi.dataset.originalName;
+            if (originalName) { 
+                const foundFileObj = selectedFileObjects.find(sf => sf.name === originalName);
+                if (foundFileObj) { newSelectedFileObjectsOrder.push(foundFileObj); } 
+            }
+        });
+        selectedFileObjects = newSelectedFileObjectsOrder; 
+        updateFileOrderInput(); // Update the hidden input
+        // Optional: autoPopulateFieldsFromFirstFile(); // Re-populate if order change should update fields
+    }
+
+    // Function to update the hidden 'file_order_input' with the current order of filenames
+    function updateFileOrderInput() {
+        const orderedFilenames = []; 
+        const listItems = fileOrderList.querySelectorAll('li');
+        listItems.forEach(item => { if (item.dataset.originalName) { orderedFilenames.push(item.dataset.originalName); } });
+        if (fileOrderInput) { 
+            fileOrderInput.value = JSON.stringify(orderedFilenames); // Store as JSON string
+            // console.log("JS: updateFileOrderInput - fileOrderInput.value set to:", fileOrderInput.value); // Debug log
+        } 
+    }
+    
+    // Attach submit listener to the form to ensure file order is updated before submission
+    if (form) { 
+        form.addEventListener('submit', function(event) { 
+            // console.log("JS: Form submit event triggered."); // Debug log
+            updateFileOrderInput(); 
+            // console.log("JS: Final value of file_order_input before submission:", fileOrderInput.value); // Debug log
+            // Additional client-side validation could go here
+        }); 
+    }
+
+    // --- Generic Dropzone Setup Function (for other single-file dropzones on the page) ---
+    function setupGenericDropZone(dropZoneId, fileInputId, textElementId, defaultText) {
+        const dropZone = document.getElementById(dropZoneId); 
+        const fileInput = document.getElementById(fileInputId);
+        const textElement = document.getElementById(textElementId); 
+        if (!dropZone || !fileInput || !textElement) {
+            console.warn("Generic Dropzone element(s) not found for IDs:", dropZoneId, fileInputId, textElementId);
+            return;
+        }
+        textElement.innerHTML = defaultText; 
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault(); dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length === 1) { // This generic one handles single file drops
+                fileInput.files = e.dataTransfer.files; 
+                textElement.textContent = `Selected: ${e.dataTransfer.files[0].name}`; 
+            }
+        });
+        fileInput.addEventListener('change', () => { // Update text on file selection
+            if (fileInput.files.length === 1) { 
+                textElement.textContent = `Selected: ${fileInput.files[0].name}`; 
+            } else { 
+                textElement.innerHTML = defaultText; 
+            }
+        });
+    }
+    // Initialize the generic dropzones for character image and scene image on this page
+    setupGenericDropZone('combined-char-image-drop-zone', 'combined_character_image_input', 'combined-char-image-drop-zone-text', 'Drag & drop char image or click');
+    setupGenericDropZone('scene-image-upload-drop-zone-combine', 'scene_image_upload_input_combine', 'scene-image-upload-drop-zone-text-combine', 'Drag & drop scene image or click');
+
+});
+</script>
+<script src="{{ url_for('static', filename='js/lazy_load.js') }}" defer></script> 
+</body>
+</html>

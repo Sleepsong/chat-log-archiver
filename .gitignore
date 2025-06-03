@@ -1,0 +1,29 @@
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.egg-info/
+venv/
+env/
+*.env
+instance/
+
+# Editor/IDE specific
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Uploads - Do not commit the dynamic content of the uploads folder
+# The empty folders will be created by __init__.py
+app/static/uploads/*
+
+# Docker
+.dockerignore # If you use one for optimizing Docker build context
+
+# Other

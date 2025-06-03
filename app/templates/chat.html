@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {# Dynamically set the window title based on chat title or character name #}
+  <title>{{ window_title | default("Chat Log") }}</title> 
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any"> 
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}"> 
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}"> 
+</head>
+<body>
+  {% if scene_image_display_path %}
+    <div class="chat-scene-layer scene-blur-layer" 
+         style="background-image: url('{{ scene_image_display_path }}');">
+    </div>
+    <div class="chat-scene-layer scene-clear-layer {{ 'style-' + (active_scene_style | default('blurred_glass')) }}" 
+         style="background-image: url('{{ scene_image_display_path }}');">
+    </div>
+  {% endif %}
+
+  <button id="chatSettingsToggleBtn" class="chat-settings-flyout-btn" title="Chat Settings">
+    <span></span><span></span><span></span> {# CSS styles these into three vertical dots #}
+  </button>
+
+  <div id="chatSettingsFlyout" class="chat-settings-flyout-panel">
+    <button id="hideSettingsFlyoutBtn" class="hide-flyout-btn" title="Hide Settings">»</button> 
+    <form action="{{ url_for('chat_settings', unique_id=unique_id) }}" method="post" enctype="multipart/form-data">
+      <h4>Chat Background</h4>
+      <div class="form-group">
+        <label for="scene_style_preference_flyout">Background Style:</label>
+        <select name="scene_style_preference" id="scene_style_preference_flyout" class="text-input">
+          <option value="blurred_glass" {% if active_scene_style == 'blurred_glass' %}selected{% endif %}>Blurred Glass</option>
+          <option value="cover" {% if active_scene_style == 'cover' %}selected{% endif %}>Cover (No Blur)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="new_scene_image_file_flyout">Upload New Scene Image:</label>
+        <input type="file" name="new_scene_image_file" id="new_scene_image_file_flyout" class="text-input" accept="image/*">
+        <small>Replaces current scene.</small>
+      </div>
+      <div class="button-group modal-buttons">
+        <button type="submit" name="action" value="upload_scene" class="button">Apply Scene</button>
+      </div>
+      <hr> {# Visual separator #}
+      <div class="button-group modal-buttons">
+         <button type="submit" name="action" value="remove_scene" class="button delete-button">Remove Scene</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="chat-wrapper" id="chatWrapper"> 
+    <div class="chat-container {% if scene_image_display_path %}has-scene-background{% endif %}"> {# `has-scene-background` class can alter background transparency #}
+      
+      <div class="chat-scroll">
+        <div class="profile-header"> 
+          {# Main character avatar: lazy loaded, positioned by CSS to overlap header #}
+          {% if main_char_display_image_path %}
+            <img data-src="{{ main_char_display_image_path }}" alt="{{ character_name }} Avatar" class="chat-avatar-large lazy-load">
+          {% else %}
+            <div class="fallback-avatar chat-avatar-large"><span>No Image</span></div>
+          {% endif %}
+
+          <div class="profile-info">
+            {# Character Name - Clickable if character_url is provided #}
+            {% if character_url %}
+              <a href="{{ character_url }}" target="_blank" title="View character source page">
+                <h2>{{ character_name }}</h2>
+              </a>
+            {% else %}
+              <h2>{{ character_name }}</h2>
+            {% endif %}
+
+            {# Chat Title (if any) #}
+            {% if chat_log.title %}
+              <p class="character-title">{{ chat_log.title }}</p>
+            {% endif %}
+
+            {# Author Information (if any) #}
+            {% if chat_log.author %}
+              {% if chat_log.author.name or chat_log.author.url %} {# Checks if author is a dict with name/url #}
+                <p class="handle">
+                  {% if chat_log.author.url %}
+                    <a href="{{ chat_log.author.url }}" target="_blank">{{ chat_log.author.name | default('Unknown Author') }}</a>
+                  {% else %}
+                    {{ chat_log.author.name | default('Unknown Author') }}
+                  {% endif %}
+                </p>
+              {% elif chat_log.author is string %} {# Handles if author is just a string #}
+                   <p class="handle">{{ chat_log.author }}</p>
+              {% endif %}
+            {% endif %}
+
+            {# Model Information - Clickable to search by model #}
+            {% if model_name %}
+              <p class="chat-model">
+                Model: 
+                <a href="{{ url_for('index', q='model:"' + model_name + '"') }}" title="Search for chats using model: {{ model_name }}">
+                  {{ model_name }}
+                </a>
+              </p>
+            {% endif %}
+
+            {# Tags Display - Clickable to search by tag #}
+            {% if tags %} 
+              <div class="tag-list">
+                {% for tag_item in tags %}
+                  <a href="{{ url_for('index', q='tag:' + tag_item) }}" class="tag-link" title="Search for tag: {{ tag_item }}">
+                    <span class="tag">{{ tag_item }}</span>
+                  </a>
+                {% endfor %}
+              </div>
+            {% endif %}
+            
+            {# Intro Section #}
+            {% if intro %}
+              <div class="intro-section">
+                <div class="intro-header-line">
+                    <span class="line left"></span>
+                    <span class="intro-label-text">Intro</span>
+                    <span class="line right"></span>
+                </div>
+                <p class="character-intro">{{ intro }}</p>
+              </div>
+            {% endif %}
+          </div> 
+        </div> 
+
+        <ul class="chat-log">
+          {% for entry in chat_log.messages %}
+            {# Each message list item, with ID for potential linking and alternating styles #}
+            <li id="msg-{{ loop.index0 }}" class="{% if entry.speaker.lower() == character_name.lower() %}message-left{% else %}message-right{% endif %} chat-message">
+              <div class="chat-entry">
+                <div class="chat-avatar-small">
+                  {# Determine if it's the primary character or secondary for avatar display #}
+                  {% if entry.speaker.lower() == character_name.lower() %}
+                    {# Primary Character Avatar #}
+                    {% if main_char_display_image_path %}
+                      <img data-src="{{ main_char_display_image_path }}" alt="{{ character_name }} Avatar" class="lazy-load">
+                    {% else %}
+                      <div class="fallback-avatar"></div>
+                    {% endif %}
+                  {% else %} 
+                    {# Secondary Character Avatar - from profile card data #}
+                    {% if entry.profile_image %}
+                      <img data-src="{{ entry.profile_image }}" alt="{{ entry.speaker }} Avatar" class="lazy-load">
+                    {% else %}
+                      <div class="fallback-avatar"></div> 
+                    {% endif %}
+                  {% endif %}
+                </div>
+                <div class="chat-text">
+                  <strong class="chat-speaker">{{ entry.speaker }}</strong>
+                  <div class="bubble">
+                    {# Apply emphasize filter for *text*, replace newlines with <br>, mark as safe HTML #}
+                    {{ entry.message | emphasize | replace('\n', '<br>') | safe }}
+                  </div>
+                </div>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      </div> 
+
+      <div class="chat-actions"> 
+        <a href="{{ url_for('edit_chat', unique_id=unique_id) }}" class="button">Edit Chat</a>
+        {# Form for deleting the chat, with a confirmation dialog #}
+        <form action="{{ url_for('delete_chat', unique_id=unique_id) }}" method="post" onsubmit="return confirmDelete();" style="display: inline;">
+          <button type="submit" class="button delete-button">Delete Chat</button>
+        </form>
+        <a href="{{ url_for('index') }}" class="button">Back to Index</a>
+      </div>
+    </div>
+  </div>
+
+  {# JavaScript Section #}
+  <script>
+    // Function to confirm chat deletion
+    function confirmDelete() {
+      return confirm("Are you sure you want to delete this chat? This action cannot be undone.");
+    }
+
+    // Executed after the DOM is fully loaded
+    window.addEventListener('DOMContentLoaded', () => {
+      // --- Logic for scrolling to a specific message if linked via hash ---
+      const hash = window.location.hash;
+      if (hash && hash.startsWith('#msg-')) { 
+        const target = document.querySelector(hash); // Find the target message element
+        if (target) {
+          // Force load any lazy-loaded images within or near the target message
+          const imagesNearHash = Array.from(target.querySelectorAll('img.lazy-load'));
+          imagesNearHash.forEach(img => {
+            if (img.dataset.src) {
+              img.src = img.dataset.src;
+              img.classList.remove('lazy-load');
+              img.classList.add('lazy-loaded');
+            }
+          });
+          // Scroll the target message into view and highlight it
+          target.scrollIntoView({ behavior: 'auto', block: 'center' }); 
+          target.classList.add('highlighted');
+          // Optional: Remove highlight after a delay (e.g., 3 seconds)
+          // setTimeout(() => target.classList.remove('highlighted'), 3000); 
+        }
+      }
+
+      // --- Logic for Chat Settings Flyout Menu ---
+      const settingsToggleBtn = document.getElementById('chatSettingsToggleBtn');
+      const settingsFlyout = document.getElementById('chatSettingsFlyout');  
+      const hideSettingsBtn = document.getElementById('hideSettingsFlyoutBtn');  
+      const chatWrapper = document.getElementById('chatWrapper');                
+
+      if (settingsToggleBtn && settingsFlyout && chatWrapper && hideSettingsBtn) {
+        settingsToggleBtn.addEventListener('click', function() {
+          settingsFlyout.classList.add('active');      
+          chatWrapper.classList.add('flyout-active'); 
+          settingsToggleBtn.classList.add('hidden');  
+        });
+        hideSettingsBtn.addEventListener('click', function() {
+          settingsFlyout.classList.remove('active');   
+          chatWrapper.classList.remove('flyout-active'); 
+          settingsToggleBtn.classList.remove('hidden');  
+        });
+      }
+    });
+  </script>
+  {# Include global JavaScript files #}
+  <script src="{{ url_for('static', filename='js/lazy_load.js') }}" defer></script>
+  {# If you create a ui_interactions.js for the dropdown in index.html, 
+     and if it contains globally useful UI functions, you might include it here too,
+     or ensure page-specific JS like the flyout toggle is self-contained or in a specific chat.js #}
+</body>
+</html>

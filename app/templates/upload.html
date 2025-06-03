@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Upload New Chat</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any"> 
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}"> 
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}"> 
+</head>
+<body>
+  <div class="upload-container">
+    <div class="upload-header"> {# User's original file had: <div class="index-header" style="justify-content: center;"> #}
+      <h1 class="index-title">Upload New Chat</h1> {# Page heading, uses .index-title for consistent styling. #}
+    </div>
+
+    {# Displays any flashed messages (e.g., success notifications, error messages) from Flask. #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %} 
+      <ul class="flash-messages">
+      {% for category, message in messages %} 
+        <li class="{{ category }}">{{ message }}</li>
+      {% endfor %}
+      </ul>
+      {% endif %}
+    {% endwith %}
+
+    <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" class="upload-form" id="upload-form">
+      <input type="text" name="title" placeholder="Enter chat title (optional)" class="text-input">
+
+      <div class="form-group">
+        <label for="image-file-input">Character Image (Optional):</label>
+        <div class="drop-zone image-drop-zone" id="char-image-drop-zone">
+          <p id="char-image-drop-zone-text">Drag & drop character image or click</p>
+          <input type="file" name="character_image" accept="image/*" id="image-file-input">
+        </div>
+      </div>
+
+      <div class="form-group">
+          <label for="scene_image_upload_input">Scene Background Image (Optional):</label>
+          <div class="drop-zone image-drop-zone" id="scene-image-upload-drop-zone">
+              <p id="scene-image-upload-drop-zone-text">Drag & drop scene image or click</p>
+              <input type="file" name="scene_image_upload" id="scene_image_upload_input" accept="image/*">
+          </div>
+      </div>
+
+      <div class="form-group">
+        <label for="file-input">Chat Log JSON File (Required):</label>
+        <div class="drop-zone profile-drop-zone" id="json-log-drop-zone"> 
+          <p id="json-log-drop-zone-text">Drag & drop your JSON file here or click to select</p>
+          <input type="file" name="chat_log" accept=".json" required id="file-input">
+        </div>
+      </div>
+
+      <div class="upload-buttons">
+        <button type="submit" class="button" id="upload-button" disabled>Upload</button>
+        <a href="{{ url_for('index') }}" class="button">Back to Index</a>
+      </div>
+    </form>
+  </div>
+
+  {# JavaScript for initializing the dropzone functionalities. #}
+  <script>
+    // Re-usable function to set up a drag-and-drop file input area.
+    // dropZoneId: ID of the div acting as the dropzone.
+    // fileInputId: ID of the hidden file input.
+    // textId: ID of the <p> tag inside the dropzone to display text.
+    // مرتبطButtonId: Optional ID of a submit button to enable/disable based on file selection (if input is required).
+    function setupGenericDropZone(dropZoneId, fileInputId, textElementId, defaultText, مرتبطButtonId = null) {
+        const dropZone = document.getElementById(dropZoneId);
+        const fileInput = document.getElementById(fileInputId);
+        const textElement = document.getElementById(textElementId); // Corrected from textId
+        const مرتبطButton = مرتبطButtonId ? document.getElementById(مرتبطButtonId) : null; // Corrected from buttonId
+
+        // If any crucial element is not found, log a warning and exit to prevent errors.
+        if (!dropZone || !fileInput || !textElement) { 
+            console.warn("Dropzone setup skipped for:", dropZoneId, "- one or more elements not found.");
+            return; 
+        }
+        
+        textElement.innerHTML = defaultText; // Set initial instructional text.
+        // If an associated button exists and the file input is required, disable button initially if no file.
+        if (مرتبطButton && fileInput.required && !fileInput.files.length) { 
+            مرتبطButton.disabled = true; 
+        }
+
+        // Clicking the dropzone div triggers a click on the hidden file input.
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        // Event listeners for drag-and-drop visual feedback.
+        dropZone.addEventListener('dragover', (e) => { 
+            e.preventDefault(); // Necessary to allow for 'drop'.
+            dropZone.classList.add('dragover'); 
+        });
+        dropZone.addEventListener('dragleave', () => { 
+            dropZone.classList.remove('dragover'); 
+        });
+        
+        // Handle files dropped onto the dropzone.
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault(); 
+            dropZone.classList.remove('dragover');
+            // Assign dropped files (handles single or multiple based on input's 'multiple' attr).
+            if (e.dataTransfer.files.length > 0) { 
+                fileInput.files = e.dataTransfer.files; 
+                // Create and dispatch an 'input' event (or 'change') to trigger the file input's listener.
+                const event = new Event('input', { bubbles: true }); 
+                fileInput.dispatchEvent(event);
+            }
+        });
+
+        // Listener for when a file is selected (either by click or by the 'drop' event dispatching 'input').
+        fileInput.addEventListener('input', () => { // Using 'input' for more immediate feedback than 'change'.
+            if (fileInput.files.length > 0) {
+                // Create a string of selected filenames (or count if too many).
+                let fileNames = Array.from(fileInput.files).map(f => f.name).join(', ');
+                if (fileNames.length > 60) fileNames = `${fileInput.files.length} files selected.`;
+                textElement.textContent = `Selected: ${fileNames}`; // Display selected file(s).
+                if (مرتبطButton) { مرتبطButton.disabled = false; } // Enable associated button.
+            } else {
+                textElement.innerHTML = defaultText; // Reset to default text if no file.
+                if (مرتبطButton && fileInput.required) { مرتبطButton.disabled = true; } // Disable button if required and empty.
+            }
+        });
+    }
+
+    // Wait for the DOM to be fully loaded before setting up dropzones.
+    document.addEventListener('DOMContentLoaded', () => {
+        // Initialize the dropzone for the main chat log JSON file.
+        setupGenericDropZone('json-log-drop-zone', 'file-input', 'json-log-drop-zone-text', 'Drag & drop your JSON file here or click to select', 'upload-button');
+        // Initialize the dropzone for the optional character image.
+        setupGenericDropZone('char-image-drop-zone', 'image-file-input', 'char-image-drop-zone-text', 'Drag & drop character image or click');
+        // Initialize the dropzone for the optional scene image.
+        setupGenericDropZone('scene-image-upload-drop-zone', 'scene_image_upload_input', 'scene-image-upload-drop-zone-text', 'Drag & drop scene image or click');
+    });
+  </script>
+  <script src="{{ url_for('static', filename='js/lazy_load.js') }}" defer></script>
+</body>
+</html>

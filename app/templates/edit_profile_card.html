@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {# Dynamically sets the window title using the original card name passed from the route. #}
+  <title>Edit Profile Card - {{ original_card_name }}</title>
+  {# Links to the main stylesheet. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {# Favicon links. #}
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any"> 
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}"> 
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}"> 
+</head>
+<body>
+  <div class="edit-profile-card-wrapper">
+    <h1>Edit Profile Card: {{ original_card_name }}</h1>
+
+    {# Displays flashed messages (e.g., errors, success notifications) from Flask. #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flash-messages">
+        {% for category, message in messages %}
+          <li class="{{ category }}">{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <form action="{{ url_for('edit_profile_card', card_name_param=original_card_name) }}" method="post" enctype="multipart/form-data" class="edit-form">
+      <div class="form-group">
+        <label for="name">Name:</label>
+        <input type="text" id="name" name="name" class="text-input" value="{{ profile_card.name | default('') }}" required>
+      </div>
+      
+		  <div class="form-group">
+          <label for="image_file_edit_input">Upload New Image (optional, replaces current):</label>
+          <div class="drop-zone image-drop-zone" id="edit-image-drop-zone"> 
+              <p id="edit-image-drop-zone-text">Drag & drop new image or click</p>
+              <input type="file" name="image_file_edit" id="image_file_edit_input" accept="image/*">
+          </div>
+          {% if profile_card.display_image_path %} 
+            <p class="current-image-note">Current image: <a href="{{ profile_card.display_image_path }}" target="_blank">{{ profile_card.display_image_path.split('/')[-1] }}</a></p>
+          {% elif raw_json_image_field and raw_json_image_field.startswith('data:image') %}
+             <p class="current-image-note">Current image: Embedded in JSON (upload new to replace)</p>
+          {% elif raw_json_image_field %}
+             <p class="current-image-note">Current image source: {{ raw_json_image_field }} (upload new to replace)</p>
+          {% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="gender">Gender:</label>
+        <select id="gender" name="gender" class="text-input">
+            <option value="" {% if not profile_card.gender or profile_card.gender not in ['Male', 'Female', 'Non-binary'] %}selected{% endif %}>Select Gender (Optional)</option>
+            <option value="Male" {% if profile_card.gender == 'Male' %}selected{% endif %}>Male</option>
+            <option value="Female" {% if profile_card.gender == 'Female' %}selected{% endif %}>Female</option>
+            <option value="Non-binary" {% if profile_card.gender == 'Non-binary' %}selected{% endif %}>Non-binary</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="age">Age:</label>
+        <input type="text" id="age" name="age" class="text-input" value="{{ profile_card.age | default('') }}">
+      </div>
+
+      <div class="form-group">
+        <label for="likes">Likes:</label>
+        <input type="text" id="likes" name="likes" class="text-input" value="{{ profile_card.likes | default('') }}">
+      </div>
+
+      <div class="form-group">
+        <label for="dislikes">Dislikes:</label>
+        <input type="text" id="dislikes" name="dislikes" class="text-input" value="{{ profile_card.dislikes | default('') }}">
+      </div>
+
+      <div class="form-group">
+        <label for="other_info">Other Info:</label>
+        <textarea id="other_info" name="other_info" class="text-input">{{ profile_card.other_info | default('') }}</textarea>
+      </div>
+
+      <div class="button-group">
+        <button type="submit" class="button">Save Changes</button>
+        <a href="{{ url_for('profile_cards') }}" class="button">Cancel</a> {# Link to go back to the profile cards list. #}
+      </div>
+    </form>
+  </div>
+
+  {# JavaScript for initializing the image dropzone. #}
+  <script>
+    // Reusable function to set up a drag-and-drop file input area.
+    function setupGenericDropZone(dropZoneId, fileInputId, textElementId, defaultText) {
+        const dropZone = document.getElementById(dropZoneId);
+        const fileInput = document.getElementById(fileInputId);
+        const textElement = document.getElementById(textElementId);
+        
+        // Exit if any essential DOM element is not found.
+        if (!dropZone || !fileInput || !textElement) {
+            console.warn("Dropzone setup skipped for:", dropZoneId, "- one or more elements not found.");
+            return;
+        }
+        
+        textElement.innerHTML = defaultText; // Set initial instructional text.
+
+        // Clicking the dropzone div triggers a click on the hidden file input.
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        // Visual feedback for dragging files over the dropzone.
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        
+        // Handle files dropped onto the dropzone.
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length === 1) { // Assuming single file drop for profile image.
+                fileInput.files = e.dataTransfer.files; // Assign dropped file to the input.
+                textElement.textContent = `Selected: ${e.dataTransfer.files[0].name}`; // Update text.
+            } else if (e.dataTransfer.files.length > 1) {
+                textElement.textContent = `Please drop only one file.`; // Feedback for multiple files
+            }
+        });
+
+        // Update text when a file is selected via the file dialog (after clicking).
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length === 1) {
+                textElement.textContent = `Selected: ${fileInput.files[0].name}`;
+            } else {
+                textElement.innerHTML = defaultText; // Reset if no file or selection cancelled.
+            }
+        });
+    }
+
+    // Wait for the DOM to be fully loaded before initializing the dropzone.
+    document.addEventListener('DOMContentLoaded', () => {
+        setupGenericDropZone('edit-image-drop-zone', 'image_file_edit_input', 'edit-image-drop-zone-text', 'Drag & drop new image or click');
+    });
+  </script>
+</body>
+</html>

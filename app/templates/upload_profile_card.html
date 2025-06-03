@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Upload/Create Profile Card</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any"> 
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}"> 
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}"> 
+</head>
+<body>
+  <div class="upload-container">
+    <div class="upload-header">
+      <h1 class="index-title">Upload or Create Profile Card</h1>
+    </div>
+
+    {# Display flashed messages (e.g., success, error) from Flask #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flash-messages">
+        {% for category, message in messages %}
+          <li class="{{ category }}">{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <form action="{{ url_for('upload_profile_card') }}" method="post" enctype="multipart/form-data" class="upload-form">
+      <p class="form-section-header">Option 1: Upload JSON File</p>
+      <div class="drop-zone profile-drop-zone" id="profile-json-drop-zone">
+        <p id="profile-json-drop-zone-text">Drag &amp; drop a profile card JSON file here or click to select.<br><small>(Standard fields: name, image, gender, age, likes, dislikes, other_info)</small></p>
+        <input type="file" name="json_file" accept=".json" id="profile-json-file-input">
+      </div>
+
+      <p class="form-section-header">— OR —</p> {# Visual separator #}
+      
+      <p class="form-section-header">Option 2: Create Manually</p>
+      <input type="text" name="name" placeholder="Name (Required)" class="text-input" >
+      <select name="gender" class="text-input"> 
+        <option value="">Select Gender (Optional)</option>
+        <option value="Male">Male</option>
+        <option value="Female">Female</option>
+        <option value="Non-binary">Non-binary</option>
+      </select>
+      <input type="text" name="age" placeholder="Age (Optional)" class="text-input">
+      <input type="text" name="favorites" placeholder="Likes (Optional)" class="text-input">
+      <input type="text" name="dislikes" placeholder="Dislikes (Optional)" class="text-input">
+      <textarea name="other_info" placeholder="Other Info (Optional)" class="text-input" rows="3"></textarea> 
+      
+      <label for="image_file_input_manual" style="margin-top:10px; display:block; color:#ccc; text-align:left; width:100%; max-width:500px;">Character Photo (Optional):</label>
+      <div class="drop-zone image-drop-zone" id="manual-image-drop-zone">
+          <p id="manual-image-drop-zone-text">Drag & drop image or click to select</p>
+          <input type="file" name="image_file" id="image_file_input_manual" accept="image/*">
+      </div>
+
+      <div class="upload-buttons">
+        <button type="submit" class="button">Upload / Create Card</button>
+        <a href="{{ url_for('profile_cards') }}" class="button">Back to Profile Cards</a>
+      </div>
+    </form>
+  </div>
+
+  {# JavaScript for initializing the dropzone functionalities. #}
+  <script>
+    // Reusable function to set up a drag-and-drop file input area.
+    // dropZoneId: ID of the div acting as the dropzone.
+    // fileInputId: ID of the hidden file input.
+    // textElementId: ID of the <p> tag inside the dropzone to display text.
+    // defaultText: Default text/HTML for the textElement.
+    // Note: The 'مرتبطButtonId' parameter for enabling/disabling a button is not used by these specific dropzones.
+    function setupGenericDropZone(dropZoneId, fileInputId, textElementId, defaultText) {
+        const dropZone = document.getElementById(dropZoneId);
+        const fileInput = document.getElementById(fileInputId);
+        const textElement = document.getElementById(textElementId);
+        
+        // If any crucial element is not found, log a warning and exit.
+        if (!dropZone || !fileInput || !textElement) {
+            console.warn("Dropzone setup skipped for:", dropZoneId, "- one or more elements not found.");
+            return;
+        }
+        
+        textElement.innerHTML = defaultText; // Set initial instructional text.
+
+        // Clicking the dropzone div triggers a click on the hidden file input.
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        // Event listeners for drag-and-drop visual feedback.
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        
+        // Handle files dropped onto the dropzone.
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            // For profile card JSON and image, usually a single file is expected.
+            if (e.dataTransfer.files.length > 0) { // Process if at least one file dropped
+                 // If input is not 'multiple', it will only take the first file.
+                fileInput.files = e.dataTransfer.files; 
+                // Display name of the first selected/dropped file.
+                textElement.textContent = `Selected: ${fileInput.files[0].name}`; 
+            }
+        });
+
+        // Update text when a file is selected via the file dialog (after clicking).
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                // Display name of the first selected file.
+                textElement.textContent = `Selected: ${fileInput.files[0].name}`;
+            } else {
+                textElement.innerHTML = defaultText; // Reset to default text if no file.
+            }
+        });
+    }
+
+    // Wait for the DOM to be fully loaded before setting up dropzones.
+    document.addEventListener('DOMContentLoaded', () => {
+        // Initialize the dropzone for profile card JSON file.
+        setupGenericDropZone(
+            'profile-json-drop-zone', 
+            'profile-json-file-input', 
+            'profile-json-drop-zone-text', 
+            'Drag & drop a profile card JSON file here or click to select.<br><small>(Standard fields: name, image, gender, age, likes, dislikes, other_info)</small>'
+        );
+        // Initialize the dropzone for manually uploading a character photo.
+        setupGenericDropZone(
+            'manual-image-drop-zone', 
+            'image_file_input_manual', 
+            'manual-image-drop-zone-text', 
+            'Drag & drop image or click to select'
+        );
+    });
+  </script>
+  {# <script src="{{ url_for('static', filename='js/lazy_load.js') }}" defer></script> #}
+</body>
+</html>

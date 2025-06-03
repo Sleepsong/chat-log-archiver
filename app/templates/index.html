@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chat Log Archive</title> {# Updated window title #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any"> 
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}"> 
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}"> 
+</head>
+<body>
+	<div class="index-header-wrapper">
+		<div class="index-header">
+      <div class="logo-icon">
+        <a href="{{ url_for('index') }}" title="Back to Home">
+          <img src="{{ url_for('static', filename='logo.png') }}" alt="App Logo">
+        </a>
+      </div>
+
+		  <form method="get" action="{{ url_for('index') }}" class="search-form">
+			  <input type="text" name="q" placeholder="Search all chats..." class="text-input" value="{{ query }}">
+			  <span class="search-helper" title="Prefixes: tag:value, author:value, name:value, title:value, intro:value, model:value. Example: tag:sfw model:&quot;CO Tau V2&quot; keyword">❓</span>
+			  <label class="checkbox-label">
+			    <input type="checkbox" name="include_messages" value="true" {% if include_messages %}checked{% endif %}>
+			    Include messages
+			  </label>
+			  <button type="submit" class="button search-button">🔍 Search</button>
+		  </form>
+
+		  <div class="add-new-menu">
+			  <button id="addNewBtn" class="button icon-button" title="Add New Chat/Memories">
+			    <span class="plus-icon">+</span>
+			  </button>
+			  <div id="addNewDropdown" class="dropdown-content">
+			    <a href="{{ url_for('upload_file') }}">⬆️ Upload New Chat</a>
+			    <a href="{{ url_for('combine_memories') }}">➕ Combine/Upload Memories</a>
+			  </div>
+		  </div>
+
+		  <a href="{{ url_for('profile_cards') }}" class="button">🧾 Profile Cards</a>
+		</div>
+	</div>
+
+  {# Display flashed messages (e.g., success notifications, error messages) #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <ul class="flash-messages">
+      {% for category, message in messages %}
+        <li class="{{ category }}">{{ message }}</li>
+      {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <div class="controls-toolbar">
+    <div class="sort-options">
+      <span>Sort by:</span>
+      {# Dynamically build query parameters for sort links to preserve current search/filter state #}
+      {% set query_params = {} %}
+      {% if query %}{% set _ = query_params.update({'q': query}) %}{% endif %}
+      {% if include_messages %}{% set _ = query_params.update({'include_messages': 'true'}) %}{% endif %}
+      
+      {# Sort links - 'active' class highlights the current sort order #}
+      <a href="{{ url_for('index', sort_by='date_desc', **query_params) }}" 
+         class="sort-link {% if sort_by == 'date_desc' or not sort_by %}active{% endif %}">Newest</a>
+      <a href="{{ url_for('index', sort_by='date_asc', **query_params) }}" 
+         class="sort-link {% if sort_by == 'date_asc' %}active{% endif %}">Oldest</a>
+      <a href="{{ url_for('index', sort_by='name_asc', **query_params) }}" 
+         class="sort-link {% if sort_by == 'name_asc' %}active{% endif %}">Name (A-Z)</a>
+      <a href="{{ url_for('index', sort_by='name_desc', **query_params) }}" 
+         class="sort-link {% if sort_by == 'name_desc' %}active{% endif %}">Name (Z-A)</a>
+    </div>
+  </div>
+
+  {# Conditional display: show message search results or gallery of chat logs #}
+  {% if message_results %}
+    {# Display when 'include_messages' is checked and search yields message-specific results #}
+    <div class="chat-container" style="margin: 20px auto; max-width: 800px; height: auto; min-height: 300px;">
+      <h2 style="text-align:center; color: #eee; margin-bottom: 20px;">Search Results in Messages:</h2>
+      <ul class="chat-log">
+        {# Loop through each message result #}
+        {% for result in message_results %}
+          <li class="{% if result.is_primary_speaker %}message-left{% else %}message-right{% endif %}">
+            {# Link to the specific message within the chat log display page #}
+            <a href="{{ url_for('display_chat', unique_id=result.unique_id) }}#msg-{{ result.index }}" style="text-decoration: none; color: inherit;">
+              <div class="chat-entry">
+                <div class="chat-avatar-small">
+                  {# Display avatar for the speaker of the message result #}
+                  {% if result.display_image_path %}
+                    <img data-src="{{ result.display_image_path }}" alt="{{ result.character_name }} Avatar" class="lazy-load">
+                  {% else %}
+                    <div class="fallback-avatar"></div>
+                  {% endif %}
+                </div>
+                <div class="chat-text">
+                  <strong class="chat-speaker">{{ result.character_name }}</strong>
+                  <div class="bubble">{{ result.message | emphasize | replace('\n', '<br>') | safe }}</div>
+                </div>
+              </div>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% else %}
+    {# Display gallery of chat logs if not showing message-specific results #}
+    <div class="gallery-grid">
+      {% for chat in chat_logs %}
+        <div class="gallery-card">
+          <a href="{{ url_for('display_chat', unique_id=chat.unique_id) }}">
+            {# Display chat log thumbnail image (lazy loaded) #}
+            {% if chat.display_image_path %} {# This path is determined in routes.py #}
+              <img data-src="{{ chat.display_image_path }}" alt="{{ chat.character_name }} Thumbnail" class="gallery-thumbnail lazy-load">
+            {% else %}
+              {# Fallback if no image path was determined (e.g., no override, no base64, no local file) #}
+              <div class="fallback-avatar gallery-thumbnail"></div> 
+            {% endif %}
+            <div class="gallery-info">
+                <div class="gallery-text-content"> 
+                    <h2 class="character-name">{{ chat.character_name }}</h2>
+                    {% if chat.title %}
+                        <p class="character-title">{{ chat.title }}</p>
+                    {% endif %}
+                    {% if chat.intro %}
+                        <p class="character-intro">{{ chat.intro }}</p> {# CSS handles clamping #}
+                    {% endif %}
+                    {% if chat.tags and chat.tags|length > 0 %} 
+                        <div class="tag-list">
+                            {# Display up to 4 tags for space reasons #}
+                            {% for tag in chat.tags[:4] %} 
+                                <span class="tag">{{ tag }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="gallery-card-footer"> 
+                    <span class="character-author">
+                        {% if chat.author %}{{ chat.author }}{% else %}&nbsp;{% endif %} {# Display author or a non-breaking space #}
+                    </span>
+                    {% if chat.message_count is not none %}
+                        <span class="message-count">🗨️ {{ chat.message_count }}</span>
+                    {% endif %}
+                </div>
+            </div>
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <script src="{{ url_for('static', filename='js/lazy_load.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/ui_interactions.js') }}" defer></script> 
+</body>
+</html>
