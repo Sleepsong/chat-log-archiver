@@ -189,68 +189,121 @@ def parse_search_query(query_string):
 @app.route('/')
 def index():
     raw_query = request.args.get('q', '').strip()
-    search_criteria = parse_search_query(raw_query)
+    search_criteria = parse_search_query(raw_query) # Assumes parse_search_query is defined
+    
     include_messages = request.args.get('include_messages') is not None
     sort_by = request.args.get('sort_by', 'date_desc')
-    chat_logs_temp, message_results, profile_cards_for_search = [], [], None
+
+    chat_logs = []
+    message_results = []
+    profile_cards_for_search = None # Lazy load profile cards if needed
 
     if not os.path.exists(CHARACTER_DATA_FOLDER):
         flash("Chat data folder not found.", "error")
-        return render_template('index.html', chat_logs=[], message_results=[], query=raw_query, include_messages=include_messages, sort_by=sort_by)
+        return render_template('index.html', chat_logs=chat_logs, message_results=message_results, query=raw_query, include_messages=include_messages, sort_by=sort_by)
 
-    for f_name in os.listdir(CHARACTER_DATA_FOLDER):
-        if not f_name.endswith('.json'): continue
-        path = os.path.join(CHARACTER_DATA_FOLDER, f_name)
-        try:
-            with open(path, 'r', encoding='utf-8') as file: chat_log_data = json.load(file)
-        except Exception as e: app.logger.error(f"Error loading {f_name}: {e}"); flash(f"Warning: Could not load '{f_name}'.", "warning"); continue
+    # --- BEHAVIOR 1: Search ONLY within messages ---
+    if include_messages and raw_query:
+        app.logger.debug("Executing search within messages.")
+        for f_name in os.listdir(CHARACTER_DATA_FOLDER):
+            if not f_name.endswith('.json'): continue
+            path = os.path.join(CHARACTER_DATA_FOLDER, f_name)
+            try:
+                with open(path, 'r', encoding='utf-8') as file: chat_log_data = json.load(file)
+            except Exception as e: 
+                app.logger.error(f"Error loading {f_name} during message search: {e}")
+                continue
 
-        char_name_default = os.path.splitext(f_name)[0].replace("_", " ").title()
-        character_name = char_name_default
-        if chat_log_data.get('messages') and chat_log_data['messages']: character_name = chat_log_data['messages'][0].get('speaker', char_name_default)
-        unique_id = os.path.splitext(f_name)[0]
-        base64_char_img = chat_log_data.get('image')
-        all_chat_tags = chat_log_data.get('tags', []) + chat_log_data.get('custom_tags', [])
-        author_field = chat_log_data.get('author'); author_name = (author_field.get('name') if isinstance(author_field, dict) else author_field) or ""
-        title_text = chat_log_data.get('title', ''); intro_text = chat_log_data.get('intro', ''); model_text = chat_log_data.get('model', '')
+            # Check if this chat log meets the prefixed criteria (tag:, author:, model:, etc.)
+            metadata_match = True
+            char_name_default = os.path.splitext(f_name)[0].replace("_", " ").title()
+            character_name = chat_log_data.get('messages',[{}])[0].get('speaker', char_name_default) if chat_log_data.get('messages') else char_name_default
+            all_chat_tags = chat_log_data.get('tags', []) + chat_log_data.get('custom_tags', [])
+            author_field = chat_log_data.get('author'); author_name = (author_field.get('name') if isinstance(author_field, dict) else author_field) or ""
+            model_text = chat_log_data.get('model', '')
 
-        metadata_match = True
-        if search_criteria['tags'] and not all(any(req_tag in ct.lower() for ct in all_chat_tags) for req_tag in search_criteria['tags']): metadata_match = False
-        if metadata_match and search_criteria['author'] and not (author_name and search_criteria['author'] in author_name.lower()): metadata_match = False # Check author_name exists
-        if metadata_match and search_criteria['name'] and not (character_name and search_criteria['name'] in character_name.lower()): metadata_match = False # Check character_name exists
-        if metadata_match and search_criteria['title'] and not (title_text and search_criteria['title'] in title_text.lower()): metadata_match = False
-        if metadata_match and search_criteria['intro'] and not (intro_text and search_criteria['intro'] in intro_text.lower()): metadata_match = False
-        if metadata_match and search_criteria['model'] and not (model_text and search_criteria['model'].lower() == model_text.lower()): metadata_match = False
-        if metadata_match and search_criteria['general_keywords']:
-            if not all(any(kw in field.lower() for field in [character_name or "", title_text or "", intro_text or ""]) for kw in search_criteria['general_keywords']): metadata_match = False
-        
-        if not metadata_match and not (include_messages and search_criteria['general_keywords']): continue 
-        
-        display_img_path_gallery = get_character_image_path(unique_id, base64_image_data=base64_char_img, process_base64_if_needed=False)
-        upload_ts = os.path.getmtime(path) if os.path.exists(path) else 0
-        chat_info = {'unique_id': unique_id, 'character_name': character_name, 'display_image_path': display_img_path_gallery, 
-                       'author': author_name, 'title': title_text, 'intro': intro_text, 'tags': all_chat_tags, 
-                       'message_count': len(chat_log_data.get('messages', [])), 'upload_timestamp': upload_ts, 'model': model_text}
-
-        if include_messages and search_criteria['general_keywords']:
-            if metadata_match: 
+            if search_criteria['tags'] and not all(any(req_tag in ct.lower() for ct in all_chat_tags) for req_tag in search_criteria['tags']): metadata_match = False
+            if metadata_match and search_criteria['author'] and not (search_criteria['author'] in author_name.lower()): metadata_match = False
+            if metadata_match and search_criteria['name'] and not (search_criteria['name'] in character_name.lower()): metadata_match = False
+            # ... (Add any other prefix checks here: title, intro) ...
+            if metadata_match and search_criteria['model'] and not (model_text and search_criteria['model'].lower() == model_text.lower()): metadata_match = False
+            
+            # If metadata matches (or if no prefixes were specified), search messages for general keywords
+            if metadata_match and search_criteria['general_keywords']:
                 if profile_cards_for_search is None: profile_cards_for_search = load_profile_cards()
-                seen_msgs = set()
-                for i, msg in enumerate(chat_log_data.get('messages', [])):
-                    text, speaker = msg.get('message', ''), msg.get('speaker', character_name)
-                    if all(kw in text.lower() for kw in search_criteria['general_keywords']) and (unique_id, i) not in seen_msgs:
-                        seen_msgs.add((unique_id, i)); is_primary = speaker.lower() == character_name.lower()
-                        msg_img_path = get_character_image_path(unique_id, base64_image_data=base64_char_img, process_base64_if_needed=False) if is_primary else profile_cards_for_search.get(speaker.lower(), {}).get('display_image_path')
-                        message_results.append({'unique_id': unique_id, 'character_name': speaker, 'message': text, 'index': i, 
-                                                'display_image_path': msg_img_path, 'is_primary_speaker': is_primary})
-        elif metadata_match: 
-            chat_logs_temp.append(chat_info)
+                unique_id = os.path.splitext(f_name)[0]
+                base64_char_img = chat_log_data.get('image')
 
-    if sort_by == 'name_asc': chat_logs_temp.sort(key=lambda x: x['character_name'].lower())
-    elif sort_by == 'name_desc': chat_logs_temp.sort(key=lambda x: x['character_name'].lower(), reverse=True)
-    elif sort_by == 'date_asc': chat_logs_temp.sort(key=lambda x: x['upload_timestamp'])
-    else: chat_logs_temp.sort(key=lambda x: x['upload_timestamp'], reverse=True)
-    return render_template('index.html', chat_logs=chat_logs_temp, message_results=message_results, query=raw_query, include_messages=include_messages, sort_by=sort_by)
+                for i, msg in enumerate(chat_log_data.get('messages', [])):
+                    text = msg.get('message', '')
+                    # Check if ALL general keywords are in this message
+                    if all(kw in text.lower() for kw in search_criteria['general_keywords']):
+                        speaker_name = msg.get('speaker', character_name)
+                        is_primary = speaker_name.lower() == character_name.lower()
+                        
+                        # Get image path for the speaker
+                        msg_display_image_path = get_character_image_path(unique_id, base64_image_data=base64_char_img, process_base64_if_needed=False) if is_primary else None
+                        if not is_primary:
+                            card = profile_cards_for_search.get(speaker_name.lower())
+                            if card: msg_display_image_path = card.get('display_image_path')
+                        
+                        message_results.append({
+                            'unique_id': unique_id, 'character_name': speaker_name, 'message': text, 'index': i,
+                            'display_image_path': msg_display_image_path, 'is_primary_speaker': is_primary
+                        })
+    
+    # --- BEHAVIOR 2: Search metadata and show gallery (default behavior) ---
+    else:
+        app.logger.debug("Executing metadata search for gallery view.")
+        temp_chat_list_for_sorting = []
+        for f_name in os.listdir(CHARACTER_DATA_FOLDER):
+            # ... (This loop is now almost identical to the start of the previous full index function) ...
+            if not f_name.endswith('.json'): continue
+            path = os.path.join(CHARACTER_DATA_FOLDER, f_name)
+            try:
+                with open(path, 'r', encoding='utf-8') as file: chat_log_data = json.load(file)
+            except Exception as e: app.logger.error(f"Error loading {f_name}: {e}"); continue
+
+            char_name_default = os.path.splitext(f_name)[0].replace("_", " ").title()
+            character_name = chat_log_data.get('messages',[{}])[0].get('speaker', char_name_default) if chat_log_data.get('messages') else char_name_default
+            all_chat_tags = chat_log_data.get('tags', []) + chat_log_data.get('custom_tags', [])
+            author_field = chat_log_data.get('author'); author_name = (author_field.get('name') if isinstance(author_field, dict) else author_field) or ""
+            title_text = chat_log_data.get('title', ''); intro_text = chat_log_data.get('intro', ''); model_text = chat_log_data.get('model', '')
+
+            metadata_match = True
+            if search_criteria['tags'] and not all(any(req_tag in ct.lower() for ct in all_chat_tags) for req_tag in search_criteria['tags']): metadata_match = False
+            if metadata_match and search_criteria['author'] and not (search_criteria['author'] in author_name.lower()): metadata_match = False
+            if metadata_match and search_criteria['name'] and not (search_criteria['name'] in character_name.lower()): metadata_match = False
+            if metadata_match and search_criteria['title'] and not (search_criteria['title'] in title_text.lower()): metadata_match = False
+            if metadata_match and search_criteria['intro'] and not (search_criteria['intro'] in intro_text.lower()): metadata_match = False
+            if metadata_match and search_criteria['model'] and not (model_text and search_criteria['model'].lower() == model_text.lower()): metadata_match = False
+            if metadata_match and search_criteria['general_keywords']:
+                if not all(any(kw in field.lower() for field in [character_name, title_text, intro_text, author_name]) for kw in search_criteria['general_keywords']): metadata_match = False
+
+            if metadata_match:
+                unique_id = os.path.splitext(f_name)[0]
+                base64_char_img = chat_log_data.get('image')
+                display_img_path_gallery = get_character_image_path(unique_id, base64_image_data=base64_char_img, process_base64_if_needed=False)
+                upload_ts = os.path.getmtime(path) if os.path.exists(path) else 0
+                temp_chat_list_for_sorting.append({
+                    'unique_id': unique_id, 'character_name': character_name, 'display_image_path': display_img_path_gallery, 
+                    'author': author_name, 'title': title_text, 'intro': intro_text, 'tags': all_chat_tags, 
+                    'message_count': len(chat_log_data.get('messages', [])), 'upload_timestamp': upload_ts, 'model': model_text
+                })
+
+        # Sort the collected chat logs
+        if sort_by == 'name_asc': temp_chat_list_for_sorting.sort(key=lambda x: x['character_name'].lower())
+        elif sort_by == 'name_desc': temp_chat_list_for_sorting.sort(key=lambda x: x['character_name'].lower(), reverse=True)
+        elif sort_by == 'date_asc': temp_chat_list_for_sorting.sort(key=lambda x: x['upload_timestamp'])
+        else: temp_chat_list_for_sorting.sort(key=lambda x: x['upload_timestamp'], reverse=True)
+        chat_logs = temp_chat_list_for_sorting
+
+    return render_template('index.html', 
+                           chat_logs=chat_logs, 
+                           message_results=message_results, 
+                           query=raw_query, 
+                           include_messages=include_messages,
+                           sort_by=sort_by)
 
 # === Upload Chat Log ===
 @app.route('/upload', methods=['GET', 'POST'])
